@@ -132,6 +132,30 @@ def prediction_app():
         model = st.session_state.get("model")
         scaler = st.session_state.get("scaler")
         features = st.session_state.get("selected_features", [])
+        # ==================================================
+        # HARD DOMAIN LOCK: HEALTHCARE ONLY (SESSION-BASED)
+        # ==================================================
+
+        if "df_clustering" not in st.session_state or st.session_state.get("df_clustering") is None:
+            st.error("""
+            ❌ **Prediction App Tidak Dapat Digunakan**
+            
+            Prediction App ini **WAJIB dijalankan setelah proses Clustering Rumah Sakit**
+            pada menu **Machine Learning**.
+            
+            Sistem tidak menemukan dataset Rumah Sakit aktif di sesi ini.
+            
+            **Langkah yang Benar:**
+            1. Buka menu **Machine Learning**
+            2. Upload dataset Rumah Sakit
+            3. Pilih fitur kesehatan
+            4. Jalankan clustering hingga model terbentuk
+            5. Baru masuk ke Prediction App
+            
+            Tanpa langkah ini, prediksi **SECARA SISTEM DITOLAK**.
+            """)
+            return
+
         method_name = st.session_state.get("method_name", "Unknown")
         cluster_labels = st.session_state.get("cluster_labels")
         df_clustering = st.session_state.get("df_clustering")
@@ -145,25 +169,46 @@ def prediction_app():
             st.error("❌ Scaler atau Model tidak ditemukan.")
             return
         
-        # Deteksi tipe dataset
-        dataset_type = detect_dataset_type(features)
-        
-        # Validasi: hanya healthcare
-        if dataset_type != 'healthcare':
-            st.warning(f"""
-            ⚠️ **Fitur Prediksi Terbatas**
+        # ==================================================
+        # DATASET DOMAIN LOCK: HEALTHCARE ONLY
+        # ==================================================
+
+        dataset_type = "healthcare"  # HARD LOCK – tidak ada auto-detection
+
+        # Validasi keras: fitur harus mengandung indikator kesehatan
+        healthcare_keywords = [
+            'bed', 'fte', 'discharge', 'patient', 'salary',
+            'labor', 'resident', 'inpatient', 'hospital'
+        ]
+
+        features_lower = ' '.join([f.lower() for f in features])
+        healthcare_match = sum(
+            1 for keyword in healthcare_keywords if keyword in features_lower
+        )
+
+        if healthcare_match < 2:
+            st.error("""
+            ❌ **Dataset Tidak Valid untuk Prediction App Ini**
             
-            Fitur Hospital Cluster Prediction saat ini **hanya untuk Dataset Kesehatan/Rumah Sakit**.
+            Prediction App ini **SECARA EKSKLUSIF** dirancang untuk:
+            **Dataset Kesehatan Rumah Sakit (Hospital Provider Cost Report)**.
             
-            **Untuk menggunakan:** Upload dataset Rumah Sakit dengan variabel seperti:
-            - FTE Employees
-            - Number of Beds
-            - Total Discharges
-            - Total Salaries
-            - Contract Labor
-            - Dan variabel kesehatan lainnya
+            Dataset yang Anda gunakan **tidak memenuhi karakteristik data rumah sakit**.
+            
+            **Tindakan yang Diperlukan:**
+            - Gunakan dataset Rumah Sakit
+            - Pastikan fitur mencakup variabel seperti:
+                     
+                1. Number of Beds  
+                2. FTE Employees  
+                3. Total Discharges  
+                4. Salaries / Labor Cost  
+                5. Inpatient Metrics, dll.
+
+            Sistem dihentikan untuk mencegah prediksi tidak valid.
             """)
             return
+
         
         # Info dataset dan model terbaik
         st.markdown("##🧾 Informasi Model Terbaik")
