@@ -322,11 +322,24 @@ def ml_model():
         st.error("Dataset harus memiliki minimal dua variabel numerik.")
         return
 
+    # Ambil default fitur dari session_state (jika ada)
+    previous_features = st.session_state.clustering_config.get("features", [])
+
+    # Filter: hanya fitur yang masih ada di dataset saat ini
+    safe_default_features = [
+        f for f in previous_features if f in numeric_cols
+    ]
+
+    # Jika hasil filter kosong, fallback ke semua numeric columns
+    if not safe_default_features:
+        safe_default_features = numeric_cols
+
     selected_features = st.multiselect(
         "Pilih variabel numerik",
         numeric_cols,
-        default=st.session_state.clustering_config.get("features", numeric_cols)
+        default=safe_default_features
     )
+
     st.session_state.clustering_config["features"] = selected_features
 
     if len(selected_features) < 2:
@@ -653,6 +666,28 @@ def ml_model():
         best_result = scored_df_sorted.iloc[0]
         best_method_name = best_result["Metode"]
         
+        # ==================================================
+        # SIMPAN MODEL TERBAIK KE SESSION STATE (WAJIB)
+        # ==================================================
+
+        method_mapping = {
+            "K-Means": "KMeans",
+            "MiniBatch K-Means": "MiniBatchKMeans",
+            "DBSCAN": "DBSCAN",
+            "HDBSCAN": "HDBSCAN",
+            "Birch": "Birch",
+            "Gaussian Mixture Model (EM)": "GaussianMixture",
+        }
+
+        model_key = method_mapping.get(best_method_name)
+
+        if model_key is not None and model_key in trained_models:
+            st.session_state["model"] = trained_models[model_key]["model"]
+            st.session_state["scaler"] = scaler
+            st.session_state["method_name"] = best_method_name
+
+          
+
         st.subheader("🏆 Metode Terbaik Berdasarkan Evaluasi Ranking")
         st.markdown(f"""
         **Metode:** {best_method_name}
@@ -671,6 +706,51 @@ def ml_model():
         """)
         
         st.divider()
+
+        # ==================================================
+        # FINAL MODEL SELECTION UNTUK PREDICTION APP (WAJIB)
+        # ==================================================
+
+        # Metode yang SUPPORT prediction
+        prediction_supported_methods = {
+            "K-Means": "KMeans",
+            "MiniBatch K-Means": "MiniBatchKMeans",
+            "DBSCAN": "DBSCAN",
+            "HDBSCAN": "HDBSCAN",
+            "Birch": "Birch",
+            "Gaussian Mixture Model (EM)": "GaussianMixture",
+        }
+
+        # Cari metode terbaik yang SUPPORT prediction
+        best_model_for_prediction = None
+
+        for _, row in scored_df_sorted.iterrows():
+            method_name = row["Metode"]
+            model_key = prediction_supported_methods.get(method_name)
+
+            if model_key and model_key in trained_models:
+                best_model_for_prediction = method_name
+                break
+
+        if best_model_for_prediction is None:
+            st.error(
+                "❌ Tidak ditemukan metode clustering yang mendukung prediction.\n"
+                "Silakan pilih metode seperti K-Means, GMM, Birch, atau DBSCAN."
+            )
+            return
+
+        # Simpan FINAL model untuk prediction app
+        final_model_key = prediction_supported_methods[best_model_for_prediction]
+
+        st.session_state["model"] = trained_models[final_model_key]["model"]
+        st.session_state["scaler"] = scaler
+        st.session_state["method_name"] = best_model_for_prediction
+
+        st.success(
+            f"✅ Model '{best_model_for_prediction}' berhasil disimpan "
+            "dan siap digunakan di Cluster Prediction App."
+        )
+
     
     # ================= TAMPILKAN TAHAPAN ALGORITMA =================
     # Case 1: User hanya memilih satu metode → Tampilkan tahapan detail
