@@ -737,7 +737,7 @@ elif page == "Cluster Prediction":
         <div class="card">
             <h3>🎯 Cluster Prediction</h3>
             <p>
-            Prediksi cluster untuk data baru berdasarkan model terbaik
+            Prediksi cluster berdasarkan model terbaik
             yang telah dilatih di menu Machine Learning.
             </p>
         </div>
