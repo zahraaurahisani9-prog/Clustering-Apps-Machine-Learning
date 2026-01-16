@@ -56,6 +56,35 @@ def cluster_insight(df, features, labels):
             "Insight tidak dapat ditampilkan secara bermakna."
         )
         return
+    
+    # ==================================================
+    # INFORMASI METODE CLUSTERING YANG DIGUNAKAN
+    # ==================================================
+    active_method = (
+    st.session_state.get("clustering_method_used")
+    or st.session_state.get("method_name")
+    )
+
+
+    if active_method:
+
+        card(
+             "⚙️ Metode Clustering Aktif",
+            f"Analisis dan visualisasi cluster pada halaman ini "
+            f"menggunakan metode <b>{active_method}</b>. "
+            "Metode ini merupakan metode terbaik yang <b>dipilih untuk eksekusi dan analisis lanjutan</b>, "
+            "setelah sistem mengevaluasi berbagai metode clustering dan mempertimbangkan "
+            "dukungan terhadap proses prediction. "
+            "Metode terbaik secara struktur cluster dapat berbeda apabila metode tersebut "
+            "tidak mendukung prediction."
+        )
+    else:
+        card(
+            "⚙️ Metode Clustering Aktif",
+            "Nama metode clustering tidak tersedia di sesi saat ini. "
+            "Pastikan proses clustering dijalankan dari menu Machine Learning."
+        )
+
 
     # ==================================================
     # 1. KONTEKS INTERPRETASI
@@ -149,6 +178,8 @@ def cluster_insight(df, features, labels):
         base_labels = [f"Level {i+1}" for i in range(n)]
 
     label_map = {cid: base_labels[i] for i, cid in enumerate(ranked)}
+    st.session_state["cluster_label_map"] = label_map
+
 
     if direction == "Tinggi = Negatif":
         label_map = dict(zip(label_map.keys(), reversed(label_map.values())))
