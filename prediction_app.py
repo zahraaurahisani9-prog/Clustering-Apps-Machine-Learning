@@ -77,7 +77,7 @@ def show_healthcare_interpretation(cluster_id, features, z_scores, df_clustering
     st.markdown(f"""
     ### 🏥 Interpretasi Hasil Prediksi - Rumah Sakit
 
-    **Rumah sakit dengan karakteristik Anda diperkirakan termasuk dalam: `Cluster {int(cluster_id)}`**
+    **Rumah sakit dengan karakteristik Anda diprediksi termasuk dalam: `Cluster {int(cluster_id)}`**
 
     **Karakteristik Utama Rumah Sakit dalam Cluster ini:**
     {characteristics_text}
@@ -211,7 +211,7 @@ def prediction_app():
 
         
         # Info dataset dan model terbaik
-        st.markdown("##🧾 Informasi Model Terbaik")
+        st.markdown("## 🧾 Informasi Model Terbaik")
         
         with st.expander("Lihat Detail Model", expanded=True):
             col1, col2 = st.columns(2)
@@ -257,8 +257,8 @@ def prediction_app():
                 else:
                     min_val, max_val, mean_val = 0.0, 100.0, 50.0
                 
-                step_val = (max_val - min_val) / 100 if (max_val - min_val) > 0 else 1.0
-                
+                step_val = 1.0 
+
                 new_data[feature] = st.number_input(
                     f"{feature}",
                     min_value=min_val,
@@ -288,12 +288,16 @@ def prediction_app():
             col1, col2, col3 = st.columns(3)
             
             with col1:
+                cluster_label_map = st.session_state.get("cluster_label_map", {})
+                cluster_label = cluster_label_map.get(predicted_cluster, "Tidak Diketahui")
+
                 st.metric(
                     "Cluster Assignment",
-                    f"Cluster {int(predicted_cluster)}",
+                    f"Cluster {int(predicted_cluster)} ({cluster_label})",
                     delta=method_name,
                     delta_color="off"
                 )
+
             
             with col2:
                 n_clusters = len(np.unique(cluster_labels[cluster_labels != -1])) if cluster_labels is not None else 0
