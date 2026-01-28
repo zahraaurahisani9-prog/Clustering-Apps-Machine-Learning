@@ -332,33 +332,6 @@ bukan sebagai ukuran kebenaran absolut. Sistem **ranking-based scoring**
 menggabungkan ketiga metrik dengan bobot yang sama untuk hasil yang fair.
         """
     },
-    "limitations": {
-        "title": "Pembatasan Metodologis",
-        "icon": "⚡",
-        "subtitle": "Penting untuk Diketahui",
-        "card_class": "card-limitations",
-        "content_class": "limitations",
-        "content": """
-Aplikasi ini menekankan **interpretasi deskriptif dan eksploratif** terhadap 
-hasil clustering. Analisis yang ditampilkan memiliki pembatasan penting:
-
-• **Bersifat Relatif** – Hasil clustering relatif terhadap data yang dianalisis 
-  dan tidak merepresentasikan hubungan kausal maupun prediksi.
-
-• **Penentuan Cluster Terbatas** – Assignment cluster untuk data baru hanya 
-  didukung oleh algoritma tertentu (K-Means, GMM, BIRCH, DBSCAN/HDBSCAN) dan 
-  diperlakukan sebagai **assignment eksploratif**, bukan supervised prediction.
-
-• **Sensitivitas Parameter** – Hasil clustering sangat dipengaruhi oleh 
-  pemilihan variabel, preprocessing, dan parameter algoritma.
-
-• **Konteks Domain Penting** – Interpretasi hasil harus selalu mempertimbangkan 
-  konteks domain, pengetahuan bisnis, dan keterbatasan metodologis.
-
-**Rekomendasi**: Gunakan aplikasi ini sebagai alat eksplorasi dan pembelajaran, 
-bukan sebagai basis keputusan penting tanpa validasi empiris tambahan.
-        """
-    },
     "features": {
         "title": "Fitur Utama",
         "icon": "✨",
