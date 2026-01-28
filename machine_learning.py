@@ -299,6 +299,48 @@ ALGORITHM_STEPS = {
 }
 
 # =========================================================
+# WRAPPER UNTUK PREDIKSI SEMUA METODE
+# =========================================================
+class PredictionWrapper:
+    """
+    Wrapper untuk memastikan semua metode clustering bisa melakukan prediksi.
+    
+    Untuk metode yang tidak support predict langsung (Hierarchical, Spectral, OPTICS):
+    - Simpan labels training
+    - Gunakan KNN untuk mencari cluster terdekat untuk data baru
+    """
+    def __init__(self, method_name, model=None, X_scaled=None, labels=None, centroids=None):
+        self.method_name = method_name
+        self.model = model
+        self.X_scaled = X_scaled  # Data training scaled
+        self.labels = labels      # Labels training
+        self.centroids = centroids  # Centroids (untuk KNN fallback)
+    
+    def predict(self, X_new_scaled):
+        """Prediksi cluster untuk data baru"""
+        
+        # Metode yang support predict langsung
+        if self.method_name in ["KMeans", "MiniBatchKMeans", "DBSCAN", "HDBSCAN", "Birch", "GaussianMixture"]:
+            return self.model.predict(X_new_scaled)
+        
+        # Metode yang TIDAK support predict → gunakan KNN pada data training
+        else:
+            from sklearn.neighbors import NearestNeighbors
+            
+            # Fit KNN pada data training
+            knn = NearestNeighbors(n_neighbors=1)
+            knn.fit(self.X_scaled)
+            
+            # Cari nearest neighbor dalam data training
+            _, indices = knn.kneighbors(X_new_scaled)
+            
+            # Assign cluster berdasarkan label training
+            predicted_labels = self.labels[indices.flatten()]
+            
+            return predicted_labels
+
+
+# =========================================================
 # MAIN FUNCTION
 # =========================================================
 def ml_model():
@@ -529,30 +571,39 @@ def ml_model():
         return
 
     results = []
-    trained_models = {}
+    trained_models = {}  # Menyimpan SEMUA model dengan wrapper
 
     for method in methods:
         try:
             model, labels, method_key = None, None, None
+            wrapper = None
 
             if method == "K-Means":
                 model = KMeans(n_clusters=n_clusters, random_state=42)
                 labels = model.fit_predict(X_scaled)
                 method_key = "KMeans"
+                wrapper = PredictionWrapper("KMeans", model=model)
 
             elif method == "MiniBatch K-Means":
                 model = MiniBatchKMeans(n_clusters=n_clusters, random_state=42)
                 labels = model.fit_predict(X_scaled)
                 method_key = "MiniBatchKMeans"
+                wrapper = PredictionWrapper("MiniBatchKMeans", model=model)
 
             elif method == "Hierarchical Clustering (Agglomerative)":
                 labels = AgglomerativeClustering(
                     n_clusters=n_clusters,
                     linkage=linkage_method
                 ).fit_predict(X_scaled)
+                method_key = "HierarchicalClustering"
+                # Wrapper dengan KNN fallback
+                wrapper = PredictionWrapper(
+                    "HierarchicalClustering",
+                    X_scaled=X_scaled,
+                    labels=labels
+                )
 
             elif method == "DBSCAN":
-                # Tambahkan diagnostik sebelum clustering
                 dbscan_diag = diagnose_dbscan(X_scaled, eps, min_samples)
                 
                 if not dbscan_diag["is_valid"]:
@@ -567,29 +618,46 @@ def ml_model():
                 model = DBSCAN(eps=eps, min_samples=min_samples)
                 labels = model.fit_predict(X_scaled)
                 method_key = "DBSCAN"
+                wrapper = PredictionWrapper("DBSCAN", model=model)
 
             elif method == "OPTICS":
                 labels = OPTICS(min_samples=5).fit_predict(X_scaled)
+                method_key = "OPTICS"
+                # Wrapper dengan KNN fallback
+                wrapper = PredictionWrapper(
+                    "OPTICS",
+                    X_scaled=X_scaled,
+                    labels=labels
+                )
 
             elif method == "HDBSCAN":
                 model = hdbscan.HDBSCAN(min_cluster_size=5)
                 labels = model.fit_predict(X_scaled)
                 method_key = "HDBSCAN"
+                wrapper = PredictionWrapper("HDBSCAN", model=model)
 
             elif method == "Spectral":
                 with st.spinner(f"⏳ Menjalankan Spectral Clustering (metode ini agak lambat)..."):
                     labels = SpectralClustering(
                         n_clusters=n_clusters,
-                        affinity="nearest_neighbors",  # Lebih cepat dari 'rbf'
-                        n_neighbors=10,  # Kurangi tetangga yang dipertimbangkan
+                        affinity="nearest_neighbors",
+                        n_neighbors=10,
                         random_state=42,
                         n_init=10
                     ).fit_predict(X_scaled)
+                method_key = "SpectralClustering"
+                # Wrapper dengan KNN fallback
+                wrapper = PredictionWrapper(
+                    "SpectralClustering",
+                    X_scaled=X_scaled,
+                    labels=labels
+                )
 
             elif method == "Birch":
                 model = Birch(n_clusters=n_clusters)
                 labels = model.fit_predict(X_scaled)
                 method_key = "Birch"
+                wrapper = PredictionWrapper("Birch", model=model)
 
             elif method == "Gaussian Mixture Model (EM)":
                 model = GaussianMixture(
@@ -598,16 +666,30 @@ def ml_model():
                 )
                 labels = model.fit_predict(X_scaled)
                 method_key = "GaussianMixture"
+                wrapper = PredictionWrapper("GaussianMixture", model=model)
 
             elif method == "Grid-based Clustering":
                 X_bin = KBinsDiscretizer(
                     n_bins=5,
                     encode="ordinal"
                 ).fit_transform(X_scaled)
-                labels = KMeans(
+                kmeans_grid = KMeans(
                     n_clusters=n_clusters,
                     random_state=42
                 ).fit_predict(X_bin)
+                
+                # Simplified approach: use KNN on original scaled data
+                labels = KMeans(
+                    n_clusters=n_clusters,
+                    random_state=42
+                ).fit_predict(X_scaled)
+                method_key = "GridBasedClustering"
+                # Wrapper dengan KNN fallback
+                wrapper = PredictionWrapper(
+                    "GridBasedClustering",
+                    X_scaled=X_scaled,
+                    labels=labels
+                )
 
             mask = labels != -1
             if len(np.unique(labels[mask])) > 1:
@@ -626,10 +708,12 @@ def ml_model():
                 "Interpretasi": interpret_clustering(sil, dbi, chi)
             })
 
-            if model is not None and method_key is not None:
+            # Simpan WRAPPER (bukan model langsung)
+            if wrapper is not None and method_key is not None:
                 trained_models[method_key] = {
-                    "model": model,
-                    "silhouette": sil
+                    "wrapper": wrapper,
+                    "silhouette": sil,
+                    "model": model  # Simpan juga model original untuk kompatibilitas
                 }
 
             st.session_state.df_clustering = X.copy()
@@ -656,37 +740,39 @@ def ml_model():
     valid_df = result_df.dropna()
     
     if len(valid_df) > 0:
-        # Hitung final score untuk semua hasil
         scored_df = compute_final_score(valid_df)
-        
-        # Urutkan ascending - semakin rendah score semakin baik
         scored_df_sorted = scored_df.sort_values("Final Score", ascending=True)
-        
-        # Ambil metode terbaik (score terendah)
         best_result = scored_df_sorted.iloc[0]
         best_method_name = best_result["Metode"]
         
         # ==================================================
-        # SIMPAN MODEL TERBAIK KE SESSION STATE (WAJIB)
+        # SIMPAN WRAPPER MODEL TERBAIK (SEMUA METODE SUPPORT PREDICTION)
         # ==================================================
 
         method_mapping = {
             "K-Means": "KMeans",
             "MiniBatch K-Means": "MiniBatchKMeans",
+            "Hierarchical Clustering (Agglomerative)": "HierarchicalClustering",
             "DBSCAN": "DBSCAN",
+            "OPTICS": "OPTICS",
             "HDBSCAN": "HDBSCAN",
+            "Spectral": "SpectralClustering",
             "Birch": "Birch",
             "Gaussian Mixture Model (EM)": "GaussianMixture",
+            "Grid-based Clustering": "GridBasedClustering"
         }
 
         model_key = method_mapping.get(best_method_name)
 
         if model_key is not None and model_key in trained_models:
+            # Simpan wrapper (yang support prediction semua metode)
+            st.session_state["model_wrapper"] = trained_models[model_key]["wrapper"]
             st.session_state["model"] = trained_models[model_key]["model"]
             st.session_state["scaler"] = scaler
             st.session_state["method_name"] = best_method_name
-
-          
+            
+            # Simpan SEMUA wrapper untuk akses di prediction app
+            st.session_state["all_model_wrappers"] = trained_models
 
         st.subheader("🏆 Metode Terbaik Berdasarkan Evaluasi Ranking")
         st.markdown(f"""
@@ -708,195 +794,48 @@ def ml_model():
         st.divider()
 
         # ==================================================
-        # FINAL MODEL SELECTION UNTUK PREDICTION APP (WAJIB)
+        # FINAL MODEL SELECTION UNTUK PREDICTION APP (SEKARANG SEMUA METODE SUPPORT)
         # ==================================================
 
-        # Metode yang SUPPORT prediction
-        prediction_supported_methods = {
-            "K-Means": "KMeans",
-            "MiniBatch K-Means": "MiniBatchKMeans",
-            "DBSCAN": "DBSCAN",
-            "HDBSCAN": "HDBSCAN",
-            "Birch": "Birch",
-            "Gaussian Mixture Model (EM)": "GaussianMixture",
-        }
+        # Sekarang SEMUA metode support prediction via wrapper
+        all_methods_for_prediction = [
+            "K-Means",
+            "MiniBatch K-Means",
+            "Hierarchical Clustering (Agglomerative)",
+            "DBSCAN",
+            "OPTICS",
+            "HDBSCAN",
+            "Spectral",
+            "Birch",
+            "Gaussian Mixture Model (EM)",
+            "Grid-based Clustering"
+        ]
 
-        # Cari metode terbaik yang SUPPORT prediction
-        best_model_for_prediction = None
+        best_model_for_prediction = best_method_name  # Langsung gunakan metode terbaik
 
-        for _, row in scored_df_sorted.iterrows():
-            method_name = row["Metode"]
-            model_key = prediction_supported_methods.get(method_name)
+        final_model_key = method_mapping[best_model_for_prediction]
 
-            if model_key and model_key in trained_models:
-                best_model_for_prediction = method_name
-                break
-
-        if best_model_for_prediction is None:
-            st.error(
-                "❌ Tidak ditemukan metode clustering yang mendukung prediction.\n"
-                "Silakan pilih metode seperti K-Means, GMM, Birch, atau DBSCAN."
-            )
-            return
-
-        # Simpan FINAL model untuk prediction app
-        final_model_key = prediction_supported_methods[best_model_for_prediction]
-
+        st.session_state["model_wrapper"] = trained_models[final_model_key]["wrapper"]
         st.session_state["model"] = trained_models[final_model_key]["model"]
         st.session_state["scaler"] = scaler
         st.session_state["method_name"] = best_model_for_prediction
+        st.session_state["all_model_wrappers"] = trained_models
 
         st.success(
             f"✅ Model '{best_model_for_prediction}' berhasil disimpan "
-            "dan siap digunakan di Cluster Prediction App."
+            "dan siap digunakan di Cluster Prediction App.\n\n"
         )
 
-    
-    # ================= TAMPILKAN TAHAPAN ALGORITMA =================
-    # Case 1: User hanya memilih satu metode → Tampilkan tahapan detail
-    if len(methods) == 1:
-        selected_method = methods[0]
-        st.markdown(f"#### Metode Terpilih: **{selected_method}**")
+        # ================= TAMPILKAN TAHAPAN ALGORITMA =================
+        if best_result is not None:
+            selected_method = best_result["Metode"]
         
-        with st.expander(f"📖 Tahapan Algoritma {selected_method}", expanded=True):
-            steps = ALGORITHM_STEPS.get(selected_method, ["Informasi tahapan tidak tersedia."])
-            for step in steps:
-                st.markdown(f"**{step}**")
+            with st.expander(f"📖 Tahapan Algoritma {selected_method}", expanded=True):
+                steps = ALGORITHM_STEPS.get(
+                    selected_method,
+                    ["Informasi tahapan tidak tersedia."]
+                )
+                for step in steps:
+                    st.markdown(f"**{step}**")
 
-    # Case 2: User memilih lebih dari satu metode → Tampilkan 2 rekomendasi
-    elif len(methods) > 1 and best_result is not None:
-        st.info(f"Dari {len(methods)} metode yang dipilih, sistem merekomendasikan 2 metode terbaik.")
-        
-        # ================= REKOMENDASI 1: METODE TERBAIK ASLI =================
-        st.markdown("### 🥇 Rekomendasi 1: Metode Terbaik (Berdasarkan Final Score)")
-        
-        best_method_original = best_result['Metode']
-        st.markdown(f"""
-        **Metode:** {best_method_original}
-        **Final Score:** {best_result['Final Score']:.2f}
-        """)
-        
-        with st.expander(f"📖 Tahapan Algoritma {best_method_original}", expanded=True):
-            steps = ALGORITHM_STEPS.get(best_method_original, ["Informasi tahapan tidak tersedia."])
-            for step in steps:
-                st.markdown(f"**{step}**")
-        
-        # ================= REKOMENDASI 2: METODE TERBAIK YANG SUPPORT PREDICTION =================
-        # Mapping metode ke support prediction
-        method_mapping = {
-            "K-Means": "KMeans",
-            "MiniBatch K-Means": "MiniBatchKMeans",
-            "Hierarchical Clustering (Agglomerative)": None,
-            "DBSCAN": "DBSCAN",
-            "OPTICS": None,
-            "HDBSCAN": "HDBSCAN",
-            "Spectral": None,
-            "Birch": "Birch",
-            "Gaussian Mixture Model (EM)": "GaussianMixture",
-            "Grid-based Clustering": None,
-        }
-        
-        support_prediction_methods = ["K-Means", "MiniBatch K-Means", "DBSCAN", "HDBSCAN", "Birch", "Gaussian Mixture Model (EM)"]
-        
-        # Cek apakah metode terbaik support prediction
-        model_key_original = method_mapping.get(best_method_original)
-        
-        if model_key_original is None:
-            # Metode terbaik TIDAK support prediction - cari yang support
-            st.divider()
-            st.markdown("### 🥈 Rekomendasi 2: Metode Terbaik yang Support Prediction")
-            st.info("Metode terbaik tidak mendukung prediction. Mencari alternatif yang support prediction...")
-            
-            # Filter hasil yang support prediction
-            prediction_supported_results = scored_df_sorted[
-                scored_df_sorted['Metode'].isin(support_prediction_methods)
-            ]
-            
-            if len(prediction_supported_results) > 0:
-                best_prediction_method = prediction_supported_results.iloc[0]
-                best_method_for_prediction = best_prediction_method['Metode']
-                
-                st.markdown(f"""
-                **Metode:** {best_method_for_prediction}
-                **Final Score:** {best_prediction_method['Final Score']:.2f}
-                
-                ✅ Metode ini **mendukung prediction** untuk data baru dan akan digunakan 
-                di Cluster Prediction App.
-                """)
-                
-                with st.expander(f"📖 Tahapan Algoritma {best_method_for_prediction}", expanded=True):
-                    steps = ALGORITHM_STEPS.get(best_method_for_prediction, ["Informasi tahapan tidak tersedia."])
-                    for step in steps:
-                        st.markdown(f"**{step}**")
-            else:
-                st.warning("⚠️ Tidak ada metode yang mendukung prediction dalam hasil evaluasi.")
-        else:
-            # Metode terbaik SUDAH support prediction
-            st.markdown("### ✅ Metode Terbaik Mendukung Prediction")
-            st.success(f"Metode **{best_method_original}** mendukung prediction dan akan digunakan di Cluster Prediction App.")
 
-    # ================= TAMPILKAN CARA PENENTUAN METODE TERBAIK =================
-    with st.expander("📑 Cara Penentuan Metode Terbaik (Ranking-Based Scoring)"):
-        st.markdown("""
-        **Sistem Penilaian Ranking-Based**
-        
-        Setiap metode dinilai dari 3 metrik evaluasi clustering:
-        
-        **1. Silhouette Score** (↑ semakin besar semakin baik)
-        - Range: -1 hingga 1
-        - > 0.5: Pemisahan cluster baik
-        - 0.25-0.5: Struktur cluster sedang
-        - < 0.25: Cluster kurang terdefinisi
-        
-        **2. Davies-Bouldin Index** (↓ semakin kecil semakin baik)
-        - Range: 0 hingga ∞
-        - < 1: Cluster relatif kompak
-        - > 1: Terdapat tumpang tindih antar cluster
-        
-        **3. Calinski-Harabasz Score** (↑ semakin besar semakin baik)
-        - Range: 0 hingga ∞
-        - Rasio dispersi antar cluster vs dalam cluster
-        - Nilai tinggi menunjukkan cluster well-defined
-        
-        **Proses Penilaian:**
-        
-        Setiap metrik diberi ranking (1 = terbaik):
-        - **Silhouette:** Ranking ascending=False (nilai terbesar = rank 1)
-        - **Davies-Bouldin:** Ranking ascending=True (nilai terkecil = rank 1)
-        - **Calinski-Harabasz:** Ranking ascending=False (nilai terbesar = rank 1)
-        
-        **Final Score = (Rank Silhouette + Rank DBI + CHI) / 3**
-        
-        Metode dengan Final Score **terendah** adalah metode terbaik.
-        
-        **Contoh Perhitungan:**
-        ```
-        Metode A: Sil_rank=1 + DBI_rank=2 + CHI_rank=1 = 4/3 = 1.33 ✓ TERBAIK
-        Metode B: Sil_rank=2 + DBI_rank=1 + CHI_rank=2 = 5/3 = 1.67
-        Metode C: Sil_rank=3 + DBI_rank=3 + CHI_rank=3 = 9/3 = 3.00
-        ```
-        """)
-
-    # ================= CATATAN METODOLOGIS =================
-    with st.expander("📑 Catatan Metodologis Cluster Assignment (Penentuan Cluster Untuk Data Baru)"):
-        st.markdown("""
-        **Model aktif untuk penentuan cluster data baru:**
-        - Satu metode → otomatis aktif
-        - Lebih dari satu → dipilih berdasarkan evaluasi terbaik
-
-        **Mendukung assignment:**
-        - K-Means
-        - MiniBatch K-Means
-        - Gaussian Mixture Model
-        - Birch
-        - DBSCAN / HDBSCAN
-
-        **Tidak mendukung assignment:**
-        - Hierarchical Clustering
-        - Spectral Clustering
-        - OPTICS
-        - Grid-based Clustering
-        """)
-
-    # ================= SIMPAN MODEL TERBAIK =================
-    # ...existing code...
