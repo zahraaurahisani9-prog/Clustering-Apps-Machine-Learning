@@ -157,7 +157,7 @@ def show_healthcare_interpretation(
     st.markdown("## 🎯 Hasil Prediksi")
 
     st.success(f"""
-    ### 🏥 Rumah Sakit Anda Termasuk dalam  **{cluster_label}** 
+    ### 🏥 Rumah Sakit Tersebut Termasuk dalam  **{cluster_label}** 
     #### Tipe Rumah Sakit : **({cluster_type})**
     """)
 
