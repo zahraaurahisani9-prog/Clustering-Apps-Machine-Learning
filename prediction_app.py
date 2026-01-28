@@ -164,7 +164,7 @@ def show_healthcare_interpretation(
     # Tampilkan interpretasi
     st.divider()
     st.markdown("## 💡 Interpretasi Hasil")
-    
+
     st.markdown("### 📊 Gambaran Operasional")
     st.markdown(meaning)
     st.markdown(characteristics)
@@ -188,6 +188,9 @@ def show_healthcare_interpretation(
 # MAIN PREDICTION APP
 # ==================================================
 def prediction_app():
+    predicted_cluster = None 
+    X_new_zscore = None
+    
     """
     Aplikasi prediksi clustering untuk Rumah Sakit
     Menggunakan model terbaik yang telah dipilih dari Machine Learning
@@ -379,24 +382,25 @@ def prediction_app():
         X_train_std = scaler.scale_
         X_new_zscore = (X_new_scaled[0] - 0) / X_train_std
             
-    # Tampilkan hasil prediksi
-    cluster_label = map_cluster_label(
-        predicted_cluster,
-        df_clustering,
-        cluster_labels
-    )
+     # =============================
+    # TAMPILKAN HASIL PREDIKSI
+    # =============================
+    if predicted_cluster is not None and X_new_zscore is not None:
 
+        cluster_label = map_cluster_label(
+            predicted_cluster,
+            df_clustering,
+            cluster_labels
+        )
 
-            
+        show_healthcare_interpretation(
+            predicted_cluster,
+            features,
+            X_new_zscore,
+            df_clustering,
+            cluster_labels
+        )
 
-            
-    show_healthcare_interpretation(
-    predicted_cluster,
-    features,
-    X_new_zscore,
-    df_clustering,
-    cluster_labels
-)
 
             
             
